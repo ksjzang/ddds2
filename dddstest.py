@@ -87,7 +87,7 @@ class BluetoothWorker(QThread):
         self.message_queue.put(received_data)
 
     def play_mp3(self, filename):
-        """ USB에서 'final/' 폴더를 찾고 MP3 재생 """
+        """ MP3 파일을 USB에서 찾아 실행 """
         usb_path = self.find_usb_with_final()
 
         if usb_path:
@@ -97,15 +97,16 @@ class BluetoothWorker(QThread):
                 self.update_signal.emit(f"🎵 재생 중: {file_path}")
                 print(f"🎵 MP3 실행: {file_path}")
 
-                # **기존 MP3를 중지하고 새로운 MP3 실행**
+                # **기존 MP3를 완전히 종료**
                 self.stop_current_mp3()
+                subprocess.call(["pkill", "vlc"])  # VLC가 백그라운드에 남아있지 않도록 강제 종료
 
-                # **비동기 방식으로 MP3 재생**
-                try:
-                    self.current_process = subprocess.Popen(["cvlc", "--play-and-exit", file_path])
-                except Exception as e:
-                    print(f"❌ VLC 실행 실패: {e}")
-                    self.message_queue.put(filename)  # **실패하면 다시 큐에 추가**
+                # **VLC가 완전히 종료될 시간을 주기 위해 약간 대기**
+                time.sleep(0.2)
+
+                # **MP3 실행 (완전히 동기 처리)**
+                subprocess.call(["cvlc", "--play-and-exit", file_path])
+
             else:
                 self.update_signal.emit(f"⚠ 파일을 찾을 수 없음: {file_path}")
                 print(f"⚠ 파일 없음: {file_path}")
