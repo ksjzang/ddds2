@@ -62,7 +62,7 @@ class BluetoothWorker(QThread):
                 while self.running:
                     data = sock.recv(1024).decode('utf-8').strip()
 
-                    # 빈 데이터가 들어오면 무시
+                    # 빈 데이터 또는 공백만 있는 데이터가 들어오면 무시
                     if not data:
                         self.update_signal.emit("Warning: Received empty data. Ignoring...")
                         continue
@@ -83,23 +83,23 @@ class BluetoothWorker(QThread):
                         '3': os.path.join(final_folder, "stemon3.mp3"),
                         '4': os.path.join(final_folder, "stemon4.mp3"),
                     }
+                    try:
+                        # 받은 데이터가 '1'~'4'인지 확인 후 실행
+                        if data in mp3_files:
+                                mp3_path = mp3_files[data]
 
-                    # 받은 데이터가 '1'~'4'인지 확인 후 실행
-                    if data in mp3_files:
-                        mp3_path = mp3_files[data]
-
-                        # 파일이 존재하는지 확인 후 실행
-                        if os.path.exists(mp3_path):
-                            self.stop_current_mp3()  # 기존 MP3 강제 종료
-                            self.update_signal.emit(f"Playing {data}.mp3")
-                            self.vlc_process = subprocess.Popen(
-                                ["cvlc", "--play-and-exit", mp3_path],
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL
-                            )
-                        else:
-                            self.update_signal.emit(f"Error: File not found - {mp3_path}")
-                    else:
+                                # 파일이 존재하는지 확인 후 실행
+                                if os.path.exists(mp3_path):
+                                    self.stop_current_mp3()  # 기존 MP3 강제 종료
+                                    self.update_signal.emit(f"Playing {data}.mp3")
+                                    self.vlc_process = subprocess.Popen(
+                                        ["cvlc", "--play-and-exit", mp3_path],
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL
+                                    )
+                                else:
+                                    self.update_signal.emit(f"Error: File not found - {mp3_path}")
+                    except:
                         self.update_signal.emit(f"Warning: Invalid data received - '{data}'. Ignoring...")
 
             except bluetooth.BluetoothError:
