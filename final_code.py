@@ -8,6 +8,18 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 class BluetoothWorker(QThread):
     update_signal = pyqtSignal(str)  # UI를 업데이트하기 위한 시그널
+    stop_signal = pyqtSignal()  # MP3 중지를 위한 시그널
+
+    def __init__(self):
+        super().__init__()
+        self.vlc_process = None  # VLC 프로세스 핸들
+
+    def stop_current_mp3(self):
+        """ 현재 실행 중인 MP3를 강제로 중지 """
+        if self.vlc_process:
+            self.vlc_process.terminate()  # VLC 프로세스 종료
+            self.vlc_process.wait()  # 종료 완료 대기
+            self.vlc_process = None
 
     def run(self):
         mac = '08:D1:F9:26:65:D2'
@@ -34,21 +46,27 @@ class BluetoothWorker(QThread):
                     received_data = data.decode('utf-8').strip()
                     self.update_signal.emit(f"Received: {received_data}")
 
-                    if received_data == '1':
-                        self.update_signal.emit("Playing 1.mp3")
-                        subprocess.run(["cvlc", "--play-and-exit", "/media/pi/3460-A639/final/stemon1.mp3"])
-                    elif received_data == '2':
-                        self.update_signal.emit("Playing 2.mp3")
-                        subprocess.run(["cvlc", "--play-and-exit", "/media/pi/3460-A639/final/stemon2.mp3"])
-                    elif received_data == '3':
-                        self.update_signal.emit("Playing 3.mp3")
-                        subprocess.run(["cvlc", "--play-and-exit", "/media/pi/3460-A639/final/stemon3.mp3"])
-                    elif received_data == '4':
-                        self.update_signal.emit("Playing 4.mp3")
-                        subprocess.run(["cvlc", "--play-and-exit", "/media/pi/3460-A639/final/stemon4.mp3"])
+                    # 수신된 번호에 해당하는 MP3 파일 매핑
+                    mp3_files = {
+                        '1': "/media/pi/3460-A639/final/stemon1.mp3",
+                        '2': "/media/pi/3460-A639/final/stemon2.mp3",
+                        '3': "/media/pi/3460-A639/final/stemon3.mp3",
+                        '4': "/media/pi/3460-A639/final/stemon4.mp3",
+                    }
+
+                    if received_data in mp3_files:
+                        self.stop_current_mp3()  # 기존 MP3 강제 종료
+                        self.update_signal.emit(f"Playing {received_data}.mp3")
+                        self.vlc_process = subprocess.Popen(
+                            ["cvlc", "--play-and-exit", mp3_files[received_data]],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+
         except:
             self.update_signal.emit("Disconnected")
         finally:
+            self.stop_current_mp3()  # 종료 시 실행 중인 MP3 중지
             sock.close()
 
 class BluetoothApp(QWidget):
