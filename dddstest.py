@@ -57,6 +57,7 @@ class BluetoothWorker(QThread):
 
     def __init__(self):
         super().__init__()
+        self.mp3_folder = None  # MP3 폴더 경로 캐싱 (최초 한 번만 탐색)
 
     def run(self):
         """ 큐에서 메시지를 하나씩 꺼내서 MP3 재생 """
@@ -87,7 +88,7 @@ class BluetoothWorker(QThread):
         self.message_queue.put(received_data)
 
     def play_mp3(self, filename):
-        """ MP3 파일을 USB에서 찾아 실행 """
+        """ MP3 파일을 USB에서 찾아 실행 (폴더 경로 캐싱 적용) """
         usb_path = self.find_usb_with_final()
 
         if usb_path:
@@ -97,16 +98,13 @@ class BluetoothWorker(QThread):
                 self.update_signal.emit(f"🎵 재생 중: {file_path}")
                 print(f"🎵 MP3 실행 요청: {file_path}")
 
-                # **기존 MP3를 완전히 종료**
+                # 기존 MP3를 완전히 종료
                 self.stop_current_mp3()
 
-                # **디버깅 로그 추가**
-                print(f"🔍 VLC 프로세스 실행 시도 (파일: {file_path})")
-
-                # **VLC를 백그라운드가 아니라 포그라운드에서 실행 (UI에 표시됨)**
+                # **VLC 실행**
                 result = subprocess.call(["cvlc", "--play-and-exit", file_path])
 
-                # **디버깅: VLC 실행 결과 확인**
+                # 실행 결과 확인
                 if result == 0:
                     print(f"✅ VLC가 정상적으로 {file_path} 실행 완료!")
                 else:
@@ -115,6 +113,7 @@ class BluetoothWorker(QThread):
             else:
                 self.update_signal.emit(f"⚠ 파일을 찾을 수 없음: {file_path}")
                 print(f"⚠ 파일 없음: {file_path}")
+
         else:
             self.update_signal.emit("⚠ USB에서 'final/' 폴더를 찾을 수 없음.")
             print("⚠ USB에 'final/' 폴더 없음.")
@@ -132,31 +131,33 @@ class BluetoothWorker(QThread):
 
             self.current_process = None  # 프로세스 초기화
 
-        # **디버깅 로그 추가**
         print("🔍 VLC 프로세스 강제 종료 시도 (pkill 실행)")
         subprocess.call(["pkill", "vlc"])  # VLC 프로세스 종료
         time.sleep(0.2)  # 종료 대기
 
-        # **VLC 프로세스가 완전히 종료되었는지 확인**
         while subprocess.call(["pgrep", "vlc"]) == 0:  
             print("⌛ VLC 종료 대기 중...")
-            time.sleep(0.1)  # 100ms 단위로 재확인
+            time.sleep(0.1)
 
         print("✅ VLC 완전히 종료됨!")
 
     def find_usb_with_final(self):
-        """ 'final/' 폴더가 있는 USB를 자동으로 탐색 """
+        """ 'final/' 폴더가 있는 USB를 한 번만 탐색하여 저장 """
+        if self.mp3_folder and os.path.exists(self.mp3_folder):
+            return self.mp3_folder  # 기존에 찾은 경로 사용
+
         base_path = "/media/pi/"
-        
-        # 마운트된 USB 목록 가져오기
         usb_list = os.listdir(base_path)
 
         for usb in usb_list:
             usb_path = os.path.join(base_path, usb, "final")
-            if os.path.exists(usb_path):  # 'final/' 폴더가 있는 USB 찾기
+            if os.path.exists(usb_path):
+                self.mp3_folder = usb_path  # 경로 캐싱
+                print(f"✅ MP3 폴더 탐색 완료: {usb_path}")
                 return usb_path
 
-        return None  # 'final/' 폴더가 없으면 None 반환
+        self.mp3_folder = None  # 폴더가 없으면 초기화
+        return None
 
 class BluetoothApp(QWidget):
     """ PyQt5 GUI 설정 """
@@ -177,22 +178,17 @@ class BluetoothApp(QWidget):
         self.worker = BluetoothWorker()
         self.receiver = BluetoothReceiver("08:D1:F9:26:65:D2", 1)
 
-        # 블루투스 메시지를 MP3 실행 큐에 추가
         self.receiver.message_received.connect(self.worker.add_to_queue)
 
-        # 스레드 실행
         self.worker.start()
         self.receiver.start()
 
-        # UI 업데이트 연결
         self.worker.update_signal.connect(self.update_label)
 
     def update_label(self, message):
-        """ UI 상태 업데이트 """
         self.label.setText(message)
 
     def closeEvent(self, event):
-        """ 앱 종료 시 스레드 중지 """
         self.receiver.stop()
         self.worker.stop_current_mp3()
         event.accept()
