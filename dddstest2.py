@@ -4,6 +4,7 @@ import time
 import subprocess
 import sys
 import os
+import queue
 from PyQt5.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 from PyQt5.QtCore import QThread, pyqtSignal
 
@@ -52,6 +53,36 @@ class BluetoothWorker(QThread):
     """ Main thread to handle MP3 playback """
     update_signal = pyqtSignal(str)  # Signal for UI updates
     current_process = None  # Track the currently playing VLC process
+    message_queue = queue.Queue()  # **Queue to store messages**
+
+    def __init__(self):
+        super().__init__()
+
+    def run(self):
+        """ Continuously check the message queue and process MP3 playback """
+        while True:
+            if not self.message_queue.empty():
+                received_data = self.message_queue.get()
+
+                self.stop_current_mp3()  # Stop any playing MP3 before playing a new one
+
+                # Play the correct MP3 file
+                if received_data == '1':
+                    self.update_signal.emit("Playing stemon1.mp3")
+                    self.play_mp3("stemon1.mp3")
+                elif received_data == '2':
+                    self.update_signal.emit("Playing stemon2.mp3")
+                    self.play_mp3("stemon2.mp3")
+                elif received_data == '3':
+                    self.update_signal.emit("Playing stemon3.mp3")
+                    self.play_mp3("stemon3.mp3")
+                elif received_data == '4':
+                    self.update_signal.emit("Playing stemon4.mp3")
+                    self.play_mp3("stemon4.mp3")
+
+    def add_to_queue(self, received_data):
+        """ Add Bluetooth message to queue (Ensures all messages are processed) """
+        self.message_queue.put(received_data)
 
     def play_mp3(self, filename):
         """ Automatically detect USB and play MP3 from 'final/' folder """
@@ -66,7 +97,7 @@ class BluetoothWorker(QThread):
                 # Stop current MP3 before playing new one
                 self.stop_current_mp3()
 
-                # **Instantly start new MP3 playback**
+                # **Non-blocking playback using Popen**
                 self.current_process = subprocess.Popen(["cvlc", "--play-and-exit", file_path])
 
             else:
@@ -79,7 +110,7 @@ class BluetoothWorker(QThread):
         if self.current_process:
             self.update_signal.emit("Stopping current MP3 playback")
 
-            # **Forcefully kill VLC instead of waiting**
+            # **Forcefully kill VLC**
             self.current_process.kill()  
             
             # **Wait only if VLC is still running**
@@ -102,23 +133,6 @@ class BluetoothWorker(QThread):
 
         return None  # Return None if no USB contains 'final/'
 
-    def handle_message(self, received_data):
-        """ Handle received Bluetooth message and play corresponding MP3 """
-        self.stop_current_mp3()  # Stop any playing MP3 before playing a new one
-
-        if received_data == '1':
-            self.update_signal.emit("Playing stemon1.mp3")
-            self.play_mp3("stemon1.mp3")
-        elif received_data == '2':
-            self.update_signal.emit("Playing stemon2.mp3")
-            self.play_mp3("stemon2.mp3")
-        elif received_data == '3':
-            self.update_signal.emit("Playing stemon3.mp3")
-            self.play_mp3("stemon3.mp3")
-        elif received_data == '4':
-            self.update_signal.emit("Playing stemon4.mp3")
-            self.play_mp3("stemon4.mp3")
-
 class BluetoothApp(QWidget):
     """ PyQt5 GUI to display Bluetooth connection status """
     def __init__(self):
@@ -139,7 +153,7 @@ class BluetoothApp(QWidget):
         self.receiver = BluetoothReceiver("08:D1:F9:26:65:D2", 1)
 
         # Connect Bluetooth receiver signal to worker
-        self.receiver.message_received.connect(self.worker.handle_message)
+        self.receiver.message_received.connect(self.worker.add_to_queue)
 
         # Start both threads
         self.worker.start()
