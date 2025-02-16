@@ -60,35 +60,47 @@ class BluetoothWorker(QThread):
 
             try:
                 while self.running:
-                    data = sock.recv(1024)
-                    if data:
-                        received_data = data.decode('utf-8').strip()
-                        self.update_signal.emit(f"Received: {received_data}")
+                    data = sock.recv(1024).decode('utf-8').strip()
 
-                        # 'final' 폴더의 경로 찾기
-                        final_folder = self.find_final_folder()
-                        if not final_folder:
-                            self.update_signal.emit("USB with 'final' folder not found.")
-                            continue
+                    # 빈 데이터가 들어오면 무시
+                    if not data:
+                        self.update_signal.emit("Warning: Received empty data. Ignoring...")
+                        continue
 
-                        # MP3 파일 경로 설정
-                        mp3_files = {
-                            '1': os.path.join(final_folder, "stemon1.mp3"),
-                            '2': os.path.join(final_folder, "stemon2.mp3"),
-                            '3': os.path.join(final_folder, "stemon3.mp3"),
-                            '4': os.path.join(final_folder, "stemon4.mp3"),
-                        }
+                    # 블루투스에서 받은 데이터 로그 출력
+                    self.update_signal.emit(f"Received: {data}")
 
-                        if received_data in mp3_files and os.path.exists(mp3_files[received_data]):
+                    # 'final' 폴더의 경로 찾기
+                    final_folder = self.find_final_folder()
+                    if not final_folder:
+                        self.update_signal.emit("USB with 'final' folder not found.")
+                        continue
+
+                    # MP3 파일 경로 설정
+                    mp3_files = {
+                        '1': os.path.join(final_folder, "stemon1.mp3"),
+                        '2': os.path.join(final_folder, "stemon2.mp3"),
+                        '3': os.path.join(final_folder, "stemon3.mp3"),
+                        '4': os.path.join(final_folder, "stemon4.mp3"),
+                    }
+
+                    # 받은 데이터가 '1'~'4'인지 확인 후 실행
+                    if data in mp3_files:
+                        mp3_path = mp3_files[data]
+
+                        # 파일이 존재하는지 확인 후 실행
+                        if os.path.exists(mp3_path):
                             self.stop_current_mp3()  # 기존 MP3 강제 종료
-                            self.update_signal.emit(f"Playing {received_data}.mp3")
+                            self.update_signal.emit(f"Playing {data}.mp3")
                             self.vlc_process = subprocess.Popen(
-                                ["cvlc", "--play-and-exit", mp3_files[received_data]],
+                                ["cvlc", "--play-and-exit", mp3_path],
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL
                             )
                         else:
-                            self.update_signal.emit(f"File not found: {mp3_files[received_data]}")
+                            self.update_signal.emit(f"Error: File not found - {mp3_path}")
+                    else:
+                        self.update_signal.emit(f"Warning: Invalid data received - '{data}'. Ignoring...")
 
             except bluetooth.BluetoothError:
                 self.update_signal.emit("Connection lost. Reconnecting...")
