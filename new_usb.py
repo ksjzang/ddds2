@@ -14,7 +14,7 @@ class BluetoothWorker(QThread):
         super().__init__()
         self.vlc_process = None  # VLC 프로세스 핸들
         self.running = True  # 스레드 실행 상태
-        self.mac_addresses = ['08:D1:F9:26:65:D2', '08:D1:F9:26:65:D3']  # 두 개의 ESP32 MAC 주소
+        self.mac_addresses = ['08:D1:F9:26:65:D2', '08:D1:F9:27:E0:B2']  # 두 개의 ESP32 MAC 주소
         self.sockets = {}  # 블루투스 소켓 저장
 
     def stop_current_mp3(self):
@@ -39,6 +39,24 @@ class BluetoothWorker(QThread):
 
         return None  # 'final' 폴더를 찾지 못함
 
+    def play_notification_sound(self, sound_file):
+        """ 알림 MP3 파일 재생 """
+        final_folder = self.find_final_folder()
+        if not final_folder:
+            self.update_signal.emit("USB with 'final' folder not found.")
+            return
+
+        sound_path = os.path.join(final_folder, sound_file)
+        if os.path.exists(sound_path):
+            self.stop_current_mp3()  # 기존 MP3 중지
+            subprocess.Popen(
+                ["cvlc", "--play-and-exit", sound_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            self.update_signal.emit(f"Error: File not found - {sound_path}")
+
     def connect_bluetooth(self, mac):
         """ 특정 ESP32와 블루투스 연결 시도 """
         port = 1
@@ -48,6 +66,11 @@ class BluetoothWorker(QThread):
                 sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
                 sock.connect((mac, port))
                 self.update_signal.emit(f"Connected to {mac}")
+
+                # 연결 성공 시 connected.mp3 실행 및 2초 대기
+                self.play_notification_sound("connected.mp3")
+                time.sleep(2)
+
                 return sock  # 연결된 소켓 반환
             except bluetooth.BluetoothError as e:
                 self.update_signal.emit(f"Connection failed ({mac}): {e}")
@@ -103,6 +126,10 @@ class BluetoothWorker(QThread):
 
             except bluetooth.BluetoothError:
                 self.update_signal.emit(f"[{mac}] Connection lost. Reconnecting...")
+                
+                # 연결이 끊어졌을 때 disconnected.mp3 실행
+                self.play_notification_sound("disconnected.mp3")
+
                 sock.close()
                 del self.sockets[mac]  # 소켓 삭제하여 재연결 시도
 
